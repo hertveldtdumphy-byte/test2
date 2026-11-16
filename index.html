@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Assembler</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef0ef;--panel:#fafbfa;--ink:#1a2026;--mute:#66707a;--line:#d5d9db;--acc:#0b6e8f;--accbg:#dcedf3;--view:#e6e9e8;--field:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#121619;--panel:#1a1f23;--ink:#e5e9ec;--mute:#8993a0;--line:#2b333a;--acc:#52b8dc;--accbg:#17313c;--view:#0f1316;--field:#12171a}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font:14px/1.4 "IBM Plex Sans",system-ui,sans-serif;background:var(--bg);color:var(--ink);display:grid;grid-template-columns:270px minmax(0,1fr) 290px}
+aside{background:var(--panel);overflow:auto;padding:14px;display:flex;flex-direction:column;gap:16px}
+aside.l{border-right:1px solid var(--line)}aside.r{border-left:1px solid var(--line)}
+h2{font-size:13px;margin:0 0 8px;font-weight:600}
+small{color:var(--mute);display:block}
+ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;background:var(--field)}
+li.empty{border-style:dashed;color:var(--mute);background:none}
+li[data-sel]{cursor:pointer}li.on{border-color:var(--acc);background:var(--accbg)}
+button,select,input{font:inherit;color:inherit}
+button{background:var(--field);border:1px solid var(--line);border-radius:4px;padding:5px 9px;cursor:pointer}
+button:hover{border-color:var(--acc)}button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+input,select{background:var(--field);border:1px solid var(--line);border-radius:4px;padding:5px 7px;width:100%}
+input[type=checkbox]{width:auto}
+#drop{border:1.5px dashed var(--line);border-radius:6px;padding:16px;text-align:center;cursor:pointer;color:var(--mute)}
+#drop.over{border-color:var(--acc);background:var(--accbg);color:var(--ink)}
+.row{display:flex;gap:8px;align-items:center}
+.row>*{flex:1}.row>label{flex:none}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.grid3 label{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--mute)}
+table{width:100%;border-collapse:collapse}td{padding:4px 0;border-bottom:1px solid var(--line)}td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+main{position:relative;min-width:0;min-height:0}
+#view{position:absolute;inset:0;overflow:hidden;background:var(--view)}
+#view canvas{display:block}
+.bar{position:absolute;top:10px;left:10px;display:flex;gap:6px;flex-wrap:wrap;z-index:2}
+.bar button{background:var(--panel)}.bar button.on{background:var(--acc)}
+.bar .snap{display:flex;gap:6px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:3px 8px}
+.bar .snap input[type=number]{width:62px;padding:2px 4px}
+#msg{color:#c0392b;font-size:13px;min-height:1em}
+@media (max-width:900px){body{grid-template-columns:1fr;grid-template-rows:auto 60vh auto;height:auto}aside.r{border-left:0}}
+</style>
+</head>
+<body>
+<aside class="l">
+  <div>
+    <h2>Bibliotheek</h2>
+    <div id="drop" tabindex="0" role="button">Sleep GLB, STL of OBJ hierheen<small>of klik om te kiezen</small></div>
+    <input id="file" type="file" accept=".glb,.gltf,.stl,.obj" multiple hidden>
+    <div class="row" style="margin-top:8px">
+      <label for="unit">Eenheid bestand</label>
+      <select id="unit"><option value="1">mm</option><option value="10">cm</option><option value="1000">m</option></select>
+    </div>
+    <label class="row" style="margin-top:6px"><input type="checkbox" id="zup"><span>CAD-oriëntatie (Z omhoog)</span></label>
+    <div id="msg" role="alert"></div>
+  </div>
+  <ul id="lib"></ul>
+</aside>
+
+<main>
+  <div id="view"></div>
+  <div class="bar">
+    <button id="m-translate" class="on">Verplaats</button>
+    <button id="m-rotate">Draai</button>
+    <button id="m-scale">Schaal</button>
+    <span class="snap"><label><input type="checkbox" id="snap" checked> Snap</label><input type="number" id="snapmm" value="10" min="1" step="1" title="Stap in mm"> mm</span>
+  </div>
+</main>
+
+<aside class="r">
+  <div id="sel" hidden>
+    <h2 id="selname">Selectie</h2>
+    <div class="grid3">
+      <label>X mm<input id="px" type="number" step="any"></label>
+      <label>Y mm (hoog)<input id="py" type="number" step="any"></label>
+      <label>Z mm<input id="pz" type="number" step="any"></label>
+      <label>Rot X °<input id="rx" type="number" step="any"></label>
+      <label>Rot Y °<input id="ry" type="number" step="any"></label>
+      <label>Rot Z °<input id="rz" type="number" step="any"></label>
+    </div>
+    <div class="row" style="margin-top:8px"><label for="sc">Schaal</label><input id="sc" type="number" step="0.01" min="0.01"></div>
+    <div class="row" style="margin-top:8px"><button id="dup">Dupliceer</button><button id="del">Verwijder</button></div>
+  </div>
+  <div><h2>Samenstelling</h2><ul id="scene"></ul></div>
+  <div>
+    <h2>Onderdelenlijst</h2>
+    <table id="bomT"><tbody id="bom"></tbody></table>
+  </div>
+  <div>
+    <h2>Opslaan en exporteren</h2>
+    <div class="row" style="flex-wrap:wrap">
+      <button id="exJson">Samenstelling (.json)</button>
+      <button id="exCsv">Lijst (.csv)</button>
+      <button id="exGlb">Model (.glb)</button>
+      <button id="openJson">Open .json</button>
+    </div>
+    <input id="jsonFile" type="file" accept=".json" hidden>
+  </div>
+</aside>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = v => v.toArray().map(n => Math.round(n)).join(' × ') + ' mm';
+const deg = THREE.MathUtils.radToDeg, rad = THREE.MathUtils.degToRad;
+
+// ---------- scène (1 eenheid = 1 mm, Y is omhoog) ----------
+const view = $('view');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(getComputedStyle(document.documentElement).getPropertyValue('--view').trim());
+const camera = new THREE.PerspectiveCamera(45, 1, 10, 200000);
+camera.position.set(1800, 1400, 2600);
+const renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setPixelRatio(devicePixelRatio);
+view.appendChild(renderer.domElement);
+const orbit = new THREE.OrbitControls(camera, renderer.domElement);
+orbit.target.set(0, 400, 0);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x667078, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+sun.position.set(1500, 3000, 2000);
+scene.add(sun);
+scene.add(new THREE.GridHelper(6000, 60, 0x7a8790, 0xb5bcc1));
+const asm = new THREE.Group();
+scene.add(asm);
+const tc = new THREE.TransformControls(camera, renderer.domElement);
+tc.addEventListener('dragging-changed', e => orbit.enabled = !e.value);
+tc.addEventListener('objectChange', sync);
+scene.add(tc);
+const bh = new THREE.BoxHelper(new THREE.Object3D(), 0x0b9bd0);
+bh.visible = false;
+scene.add(bh);
+
+new ResizeObserver(() => {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}).observe(view);
+(function loop() { requestAnimationFrame(loop); if (sel) bh.setFromObject(sel); orbit.update(); renderer.render(scene, camera); })();
+
+// ---------- bibliotheek ----------
+const lib = [];
+let uid = 0, sel = null;
+
+async function loadFiles(files) {
+  $('msg').textContent = '';
+  for (const f of files) {
+    const ext = f.name.split('.').pop().toLowerCase();
+    const name = f.name.replace(/\.[^.]+$/, '');
+    try {
+      const buf = await f.arrayBuffer();
+      let obj;
+      if (ext === 'glb' || ext === 'gltf') {
+        const data = ext === 'gltf' ? new TextDecoder().decode(buf) : buf;
+        obj = (await new Promise((ok, no) => new THREE.GLTFLoader().parse(data, '', ok, no))).scene;
+      } else if (ext === 'stl') {
+        obj = new THREE.Mesh(new THREE.STLLoader().parse(buf), new THREE.MeshStandardMaterial({color: 0x9aa5ad, metalness: 0.3, roughness: 0.6}));
+      } else if (ext === 'obj') {
+        obj = new THREE.OBJLoader().parse(new TextDecoder().decode(buf));
+      } else throw new Error('Type .' + ext + ' wordt niet ondersteund. Gebruik GLB, STL of OBJ.');
+      const inner = new THREE.Group();
+      inner.add(obj);
+      if ($('zup').checked) inner.rotation.x = -Math.PI / 2;
+      inner.scale.setScalar(+$('unit').value);
+      const tpl = new THREE.Group();
+      tpl.add(inner);
+      tpl.updateMatrixWorld(true);
+      lib.push({id: ++uid, name, tpl, size: new THREE.Box3().setFromObject(tpl).getSize(new THREE.Vector3())});
+    } catch (e) {
+      $('msg').textContent = f.name + ': ' + (e.message || 'kon niet worden gelezen');
+    }
+  }
+  refresh();
+}
+
+function place(p, t) {
+  const o = p.tpl.clone(true);
+  o.userData = {partId: p.id, name: p.name};
+  if (t) {
+    o.position.fromArray(t.position);
+    o.rotation.set(rad(t.rotation[0]), rad(t.rotation[1]), rad(t.rotation[2]));
+    o.scale.fromArray(t.scale);
+  }
+  asm.add(o);
+  select(o);
+  return o;
+}
+
+function select(o) {
+  sel = o;
+  if (o) tc.attach(o); else tc.detach();
+  bh.visible = !!o;
+  refresh();
+  sync();
+}
+
+function sync() {
+  if (!sel) return;
+  const v = {px: sel.position.x, py: sel.position.y, pz: sel.position.z,
+    rx: deg(sel.rotation.x), ry: deg(sel.rotation.y), rz: deg(sel.rotation.z), sc: sel.scale.x};
+  for (const k in v) if (document.activeElement !== $(k)) $(k).value = +v[k].toFixed(2);
+}
+
+function refresh() {
+  $('lib').innerHTML = lib.length
+    ? lib.map(p => `<li><div>${esc(p.name)}<small>${fmt(p.size)}</small></div><button data-add="${p.id}">Plaats</button></li>`).join('')
+    : '<li class="empty">Nog geen modellen geladen.</li>';
+  $('scene').innerHTML = asm.children.length
+    ? asm.children.map((o, i) => `<li data-sel="${i}" class="${o === sel ? 'on' : ''}">${esc(o.userData.name)}</li>`).join('')
+    : '<li class="empty">Nog niets geplaatst.</li>';
+  const c = {};
+  asm.children.forEach(o => c[o.userData.partId] = (c[o.userData.partId] || 0) + 1);
+  $('bom').innerHTML = Object.entries(c).map(([id, n]) => `<tr><td>${esc(lib.find(p => p.id == id).name)}</td><td>${n}</td></tr>`).join('');
+  $('sel').hidden = !sel;
+  if (sel) $('selname').textContent = sel.userData.name;
+}
+
+// ---------- invoer ----------
+$('lib').onclick = e => { const b = e.target.closest('[data-add]'); if (b) place(lib.find(p => p.id == b.dataset.add)); };
+$('scene').onclick = e => { const li = e.target.closest('[data-sel]'); if (li) select(asm.children[li.dataset.sel]); };
+$('dup').onclick = duplicate;
+$('del').onclick = remove;
+function duplicate() {
+  if (!sel) return;
+  place(lib.find(p => p.id === sel.userData.partId), {
+    position: [sel.position.x + 100, sel.position.y, sel.position.z],
+    rotation: [deg(sel.rotation.x), deg(sel.rotation.y), deg(sel.rotation.z)],
+    scale: sel.scale.toArray()});
+}
+function remove() { if (!sel) return; asm.remove(sel); select(null); }
+
+['px','py','pz','rx','ry','rz'].forEach(k => $(k).onchange = () => {
+  if (!sel) return;
+  const g = id => parseFloat($(id).value) || 0;
+  sel.position.set(g('px'), g('py'), g('pz'));
+  sel.rotation.set(rad(g('rx')), rad(g('ry')), rad(g('rz')));
+});
+$('sc').onchange = () => { if (sel) sel.scale.setScalar(Math.max(0.01, parseFloat($('sc').value) || 1)); };
+
+function mode(m) {
+  tc.setMode(m);
+  ['translate','rotate','scale'].forEach(x => $('m-' + x).classList.toggle('on', x === m));
+}
+['translate','rotate','scale'].forEach(m => $('m-' + m).onclick = () => mode(m));
+function snap() {
+  const on = $('snap').checked, mm = parseFloat($('snapmm').value) || 10;
+  tc.setTranslationSnap(on ? mm : null);
+  tc.setRotationSnap(on ? rad(15) : null);
+  tc.setScaleSnap(on ? 0.05 : null);
+}
+$('snap').onchange = $('snapmm').onchange = snap;
+snap();
+
+// selecteren door te klikken in het 3D-beeld
+let down = null;
+renderer.domElement.addEventListener('pointerdown', e => down = [e.clientX, e.clientY]);
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4 || tc.axis) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera({x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -((e.clientY - r.top) / r.height) * 2 + 1}, camera);
+  const hit = ray.intersectObjects(asm.children, true)[0];
+  let o = hit && hit.object;
+  while (o && o.parent !== asm) o = o.parent;
+  select(o || null);
+});
+
+window.addEventListener('keydown', e => {
+  if (/INPUT|SELECT/.test(e.target.tagName)) return;
+  const k = e.key.toLowerCase();
+  if (k === 'w') mode('translate'); else if (k === 'e') mode('rotate'); else if (k === 'r') mode('scale');
+  else if (k === 'delete' || k === 'backspace') remove();
+  else if (k === 'd') duplicate();
+  else if (k === 'escape') select(null);
+});
+
+// bestanden laden
+const drop = $('drop');
+drop.onclick = () => $('file').click();
+drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') $('file').click(); };
+$('file').onchange = e => { const f = e.target.files; if (f[0]) $('zup').checked = /\.(stl|obj)$/i.test(f[0].name); loadFiles([...f]); e.target.value = ''; };
+['dragover','dragenter'].forEach(t => document.body.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(t => document.body.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+document.body.addEventListener('drop', e => { const f = [...e.dataTransfer.files]; if (f[0]) $('zup').checked = /\.(stl|obj)$/i.test(f[0].name); loadFiles(f); });
+
+// ---------- opslaan en exporteren ----------
+function save(name, data, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([data], {type}));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+$('exJson').onclick = () => save('samenstelling.json', JSON.stringify({eenheid: 'mm', items: asm.children.map(o => ({
+  onderdeel: o.userData.name,
+  position: o.position.toArray().map(n => +n.toFixed(3)),
+  rotation: [deg(o.rotation.x), deg(o.rotation.y), deg(o.rotation.z)].map(n => +n.toFixed(3)),
+  scale: o.scale.toArray()}))}, null, 1), 'application/json');
+$('exCsv').onclick = () => {
+  const c = {};
+  asm.children.forEach(o => c[o.userData.name] = (c[o.userData.name] || 0) + 1);
+  save('onderdelenlijst.csv', 'Onderdeel;Aantal\n' + Object.entries(c).map(([n, q]) => `"${n.replace(/"/g, '""')}";${q}`).join('\n'), 'text/csv');
+};
+$('exGlb').onclick = () => {
+  if (!asm.children.length) return;
+  tc.detach();
+  new THREE.GLTFExporter().parse(asm, buf => { save('samenstelling.glb', buf, 'model/gltf-binary'); if (sel) tc.attach(sel); }, {binary: true});
+};
+$('openJson').onclick = () => $('jsonFile').click();
+$('jsonFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const data = JSON.parse(await f.text()), missing = new Set();
+    data.items.forEach(t => { const p = lib.find(x => x.name === t.onderdeel); if (p) place(p, t); else missing.add(t.onderdeel); });
+    $('msg').textContent = missing.size ? 'Eerst deze modellen laden: ' + [...missing].join(', ') : '';
+  } catch (err) { $('msg').textContent = 'Ongeldig samenstellingsbestand.'; }
+};
+refresh();
+</script>
+</body>
+</html>
