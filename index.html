@@ -127,6 +127,9 @@ dialog menu{display:flex;gap:8px;justify-content:flex-end;padding:0;margin:20px 
 #admin .mt{margin:12px 0}#admin .btns{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 0}
 @media (max-width:820px){#admin{grid-template-columns:1fr;grid-template-rows:auto auto minmax(0,1fr)}.an{flex-direction:row;border-right:0;border-bottom:1px solid var(--line)}.ah{flex-wrap:wrap}.fr{grid-template-columns:1fr;gap:8px}.ac{padding:18px 16px 60px}}
 #admin .tb .nf input{max-width:170px}
+#adminBtn{position:fixed;left:22px;top:70px;z-index:20;background:var(--panel);font-size:13px;padding:5px 12px}
+#adminBtn[hidden]{display:none}
+@media (max-width:900px){#adminBtn{top:auto;bottom:auto;left:auto;right:16px;top:16px}}
 </style>
 </head>
 <body>
@@ -157,6 +160,7 @@ dialog menu{display:flex;gap:8px;justify-content:flex-end;padding:0;margin:20px 
 </dialog>
 
 <div id="admin" hidden></div>
+<button class="ghost" id="adminBtn" hidden>Beheer</button>
 <button class="cta" id="back" hidden>Terug naar beheer</button>
 <div id="lb" hidden>Lokale beheerinstellingen actief. <button class="lnk" id="lbx">Wissen</button></div>
 <div id="toast" role="status" hidden></div>
@@ -177,7 +181,7 @@ const DEFAULTS = {
   algemeen: {
     titel: 'Borstwering', ondertitel: '{type}, op maat gemaakt', mail: 'info@uwbedrijf.be',
     offerteKnop: 'Offerte aanvragen', offerteOnderwerp: 'Offerteaanvraag borstwering',
-    toonPrijs: true, prijsBalk: 'excl', btw: 21, prijsLabel: 'Indicatieve prijs',
+    toonPrijs: true, beheerKnop: true, prijsBalk: 'excl', btw: 21, prijsLabel: 'Indicatieve prijs',
     disclaimer: 'Indicatieve prijs. De definitieve prijs volgt in de offerte.'
   },
   veiligheid: {maxOpening: 100, tekst: 'Boven {max} mm voldoet de opening mogelijk niet aan de veiligheidseisen. Controleer de geldende regels.'},
@@ -682,6 +686,7 @@ function applyTexts() {
   $('#ask').textContent = a.offerteKnop;
   document.body.classList.toggle('noprice', !a.toonPrijs);
   $('#lb').hidden = !LOC || ADMOPEN;
+  $('#adminBtn').hidden = !a.beheerKnop;
 }
 function update(skip) {
   build(); syncUI(skip); price(); overview(); applyTexts();
@@ -741,6 +746,8 @@ function secAlgemeen() {
     fr('BTW-percentage', '0 verbergt de btw-regels', cNum('algemeen.btw', {u: '%', al: 'BTW'})) +
     fr('Label bij de prijs', '', cTxt('algemeen.prijsLabel')) +
     fr('Opmerking onder het prijsoverzicht', '', cArea('algemeen.disclaimer'))) +
+  card('Beheerknop', 'Een knop in de configurator om dit beheerpaneel te openen.',
+    fr('Beheerknop tonen', 'Zet dit uit voordat u publiceert. U opent het beheer dan nog altijd met ?admin achter het adres', cTog('algemeen.beheerKnop'))) +
   card('Beschikbare types', 'Zet een type uit om het te verbergen voor klanten.',
     Object.keys(ADM.types).map(t => fr(esc(ADM.types[t].naam), '', cTog(`types.${t}.actief`))).join(''));
 }
@@ -927,6 +934,7 @@ async function exportPage() {
 }
 function setCfgFromAdmin(c) { ADM = clone(c); ADMBASE = JSON.stringify(ADM); applyCfg(clone(c)); renderAdmin(); }
 
+$('#adminBtn').onclick = openAdmin;
 $('#back').onclick = () => { $('#back').hidden = true; ADMOPEN = true; $('#admin').hidden = false; };
 $('#lbx').onclick = () => { try { localStorage.removeItem(LSKEY); } catch (e) {} LOC = null; applyCfg(PUB || clone(DEFAULTS)); };
 window.addEventListener('beforeunload', e => { if (ADM && JSON.stringify(ADM) !== ADMBASE) { e.preventDefault(); e.returnValue = ''; } });
