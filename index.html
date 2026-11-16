@@ -162,6 +162,7 @@ dialog menu{display:flex;gap:8px;justify-content:flex-end;padding:0;margin:20px 
 <div id="toast" role="status" hidden></div>
 <dialog id="cdlg"><form method="dialog"><h3 id="cdt"></h3><p id="cdx"></p><menu><button value="cancel" class="ghost">Annuleren</button><button value="ok" class="cta" id="cdo"></button></menu></form></dialog>
 
+<script id="cfg-embed" type="application/json">{}</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -227,7 +228,8 @@ function merge(base, over) {
 let CFG = clone(DEFAULTS), PUB = null, LOC = null;
 const LSKEY = 'borstwering.beheer.v1';
 async function loadCfg() {
-  if (location.protocol !== 'file:') { try { const r = await fetch('config.json', {cache: 'no-store'}); if (r.ok) PUB = merge(DEFAULTS, await r.json()); } catch (e) {} }
+  try { const e = JSON.parse(document.getElementById('cfg-embed').textContent); if (isObj(e) && Object.keys(e).length) PUB = merge(DEFAULTS, e); } catch (x) {}
+  if (location.protocol !== 'file:') { try { const r = await fetch('config.json', {cache: 'no-store'}); if (r.ok) PUB = merge(PUB || DEFAULTS, await r.json()); } catch (e) {} }
   try { const t = localStorage.getItem(LSKEY); if (t) LOC = merge(DEFAULTS, JSON.parse(t)); } catch (e) {}
   CFG = LOC || PUB || clone(DEFAULTS);
 }
@@ -797,9 +799,10 @@ function secPubliceren() {
     fr('Opgeslagen in deze browser', 'Alleen u ziet dit tot u publiceert', LOC ? 'Ja' + (ADM.bijgewerkt ? ', ' + new Date(ADM.bijgewerkt).toLocaleString('nl-BE') : '') : 'Nee') +
     fr('Niet-opgeslagen wijzigingen', '', dirty ? 'Ja' : 'Nee')) +
   card('Publiceren in drie stappen', 'Klanten zien uw wijzigingen pas als het bestand op uw website staat.',
-    '<ol class="steps3"><li>Controleer het resultaat met <b>Configurator bekijken</b> en klik op <b>Opslaan</b>.</li><li>Download het bestand met <b>Exporteer config.json</b>.</li><li>Zet <b>config.json</b> in dezelfde map als <b>index.html</b> op uw website. Een eerder bestand vervangt u.</li></ol>' +
-    '<p class="mt">Let op: <b>config.json</b> kan door iedereen worden gelezen. Zet er dus alleen verkoopprijzen en teksten in die klanten mogen zien.</p>' +
-    `<p class="btns"><button class="cta" data-act="export">Exporteer config.json</button><button class="ghost" data-act="import">Importeer config.json</button></p>`) +
+    '<ol class="steps3"><li>Controleer het resultaat met <b>Configurator bekijken</b> en klik op <b>Opslaan</b>.</li><li>Klik op <b>Download index.html met ingebouwde instellingen</b>. Dat is de pagina met uw instellingen erin.</li><li>Vervang <b>index.html</b> op uw website door dit bestand. Meer is niet nodig.</li></ol>' +
+    '<p class="mt">De knop werkt wanneer u de pagina via uw website opent, niet vanaf uw computer. Alternatief: plaats <b>config.json</b> naast <b>index.html</b>.</p>' +
+    '<p class="mt">Let op: de instellingen kunnen door iedereen worden gelezen. Zet er dus alleen verkoopprijzen en teksten in die klanten mogen zien.</p>' +
+    `<p class="btns"><button class="cta" data-act="exportpage">Download index.html met ingebouwde instellingen</button><button class="ghost" data-act="export">Exporteer config.json</button><button class="ghost" data-act="import">Importeer config.json</button></p>`) +
   card('Terugzetten', 'Gebruik dit als u opnieuw wilt beginnen.',
     `<p class="btns"><button class="ghost" data-act="clearlocal"${LOC ? '' : ' disabled'}>Lokale wijzigingen wissen</button><button class="ghost" data-act="reset">Standaardwaarden laden</button></p>`);
 }
@@ -906,6 +909,22 @@ function adminSave() {
   toast('Opgeslagen in deze browser. Exporteer en plaats config.json op uw website om het voor klanten te activeren.');
   renderContent();
 }
+// Haalt de originele pagina op, zet de instellingen in het blok cfg-embed en biedt het resultaat als download aan.
+async function exportPage() {
+  if (ERRS.length) { toast('Los eerst de fouten op voordat u exporteert.'); return; }
+  if (JSON.stringify(ADM) !== ADMBASE) { toast('Klik eerst op Opslaan, zodat wat u downloadt overeenkomt met wat u ziet.'); return; }
+  const re = /(<script id="cfg-embed" type="application\/json">)[\s\S]*?(<\/script>)/;
+  try {
+    if (location.protocol === 'file:') throw new Error('file');
+    const html = await (await fetch(location.href.split('#')[0].split('?')[0], {cache: 'no-store'})).text();
+    if (!re.test(html)) throw new Error('marker');
+    const json = JSON.stringify(merge(DEFAULTS, ADM)).replace(/</g, '\\u003c');
+    save('index.html', html.replace(re, (m, a, b) => a + json + b), 'text/html', false);
+    toast('index.html is gedownload. Vervang de pagina op uw website door dit bestand.');
+  } catch (e) {
+    toast(location.protocol === 'file:' ? 'Dit werkt alleen als u de pagina via uw website opent. Exporteer nu config.json en plaats dat naast index.html.' : 'Het downloaden van de pagina is niet gelukt. Exporteer config.json en plaats dat naast index.html.');
+  }
+}
 function setCfgFromAdmin(c) { ADM = clone(c); ADMBASE = JSON.stringify(ADM); applyCfg(clone(c)); renderAdmin(); }
 
 $('#back').onclick = () => { $('#back').hidden = true; ADMOPEN = true; $('#admin').hidden = false; };
@@ -946,6 +965,7 @@ adm.addEventListener('click', async e => {
     case 'export':
       if (ERRS.length) { toast('Los eerst de fouten op voordat u exporteert.'); break; }
       save('config.json', JSON.stringify(merge(DEFAULTS, ADM), null, 2), 'application/json', false); toast('config.json is gedownload.'); break;
+    case 'exportpage': exportPage(); break;
     case 'import': $('#aimp').click(); break;
     case 'clearlocal':
       if (await ask('Lokale wijzigingen wissen?', 'De configurator valt terug op het gepubliceerde config.json, of op de standaardwaarden als dat er niet is.', 'Wissen')) {
